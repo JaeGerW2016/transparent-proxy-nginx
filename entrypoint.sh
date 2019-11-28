@@ -40,7 +40,10 @@ Nicip(){
 
 NginxStart(){
 	mkdir -p /run/nginx
-	chown nginx:nginx /run/nginx
+	egrep "^nginx" /etc/passwd >& /dev/null
+	if [ $? -ne 0 ];then
+		useradd -s /bin/false nginx
+	fi
 	nginx
 }
 
@@ -50,11 +53,11 @@ SetIptables(){
 	
 	if [[ ${#PORTS[@]} == 0 ]];then
 		port=80
-		iptables -t nat -A LOCAL_PROXY -p tcp -m tcp --dport $port REDIRECT --to-ports $port
+		iptables -t nat -A LOCAL_PROXY -p tcp -m tcp --dport $port -j REDIRECT --to-ports $port
 	else
 		for i in ${!PORTS[@]};do
 			port=$i
-			iptables -t nat -A LOCAL_PROXY -p tcp -m tcp --dport $port REDIRECT --to-ports $port
+			iptables -t nat -A LOCAL_PROXY -p tcp -m tcp --dport $port -j REDIRECT --to-ports $port
 		done
 	fi
 	iptables -t nat -A OUTPUT -p tcp -j LOCAL_PROXY
@@ -68,7 +71,7 @@ server {
     server_name localhost;
 
     location / {
-	access_log /var/log/nginx/access.$port.log transparentproxy
+	#access_log /var/log/nginx/access.$port.log tranproxy
 	resolver $NAMESERVER
 	proxy_pass http://\$host:\$port\$request_url;
 	$HEADERS 
@@ -183,13 +186,14 @@ HEADERS=`echo -e $HEADERS`
 echo "############# Setting: Set Headers ##########"
 echo $HEADERS
 
-echo "" >/etc/nginx/conf.d/default.conf
-if [[ ${#PORTS[@]} == 0 ]];then
+echo "">/etc/nginx/conf.d/default.conf
+if [[ ${#PORTS[@]} -ne 0 ]];then
 	echo "use default port: 80"
 	HttpConfig 80
 else
 	for i in ${!PORTS[@]};do
-		if [[ $i == "443" ]];then
+		if [[ $i -ne 443 ]];then
+			touch /etc/nginx/conf.d/ssl.conf
 			echo "" >/etc/nginx/conf.d/ssl.conf
 			HttpsConfig $i
 		else
@@ -198,10 +202,8 @@ else
 	done
 fi
 echo "############# Nginx Final Config ##########"
-echo "/etc/nginx/conf.d/default.conf is"
-cat /etc/nginx/conf.d/default.conf
-echo "/etc/nginx/conf.d/ssl.conf is"
-cat /etc/nginx/conf.d/ssl.conf
+[ -f "/etc/nginx/conf.d/default.conf" ] && echo "/etc/nginx/conf.d/default.conf is" && cat /etc/nginx/conf.d/default.conf
+[ -f "/etc/nginx/conf.d/ssl.conf" ] && echo "/etc/nginx/conf.d/ssl.conf is" && cat /etc/nginx/conf.d/ssl.conf
 
 echo "############# NginxStart ##########"
 NginxStart
